@@ -251,6 +251,17 @@
         <service android:name=".pro.service.CheckForegroundAppAccessibilityService"
                  android:exported="false"/>
 
+        <!-- Turns the screen off on demand (kiosk power management) -->
+        <service android:name=".service.ScreenLockAccessibilityService"
+                 android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                 android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice"
+                       android:resource="@xml/screen_lock_accessibility"/>
+        </service>
+
         <service android:name="org.eclipse.paho.android.service.MqttService"
             android:foregroundServiceType="specialUse|systemExempted"
             android:exported="false">

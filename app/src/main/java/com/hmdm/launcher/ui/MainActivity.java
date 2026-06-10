@@ -103,6 +103,7 @@ import com.hmdm.launcher.pro.ProUtils;
 import com.hmdm.launcher.pro.service.CheckForegroundAppAccessibilityService;
 import com.hmdm.launcher.pro.service.CheckForegroundApplicationService;
 import com.hmdm.launcher.receiver.ScreenOffReceiver;
+import com.hmdm.launcher.receiver.PowerConnectionReceiver;
 import com.hmdm.launcher.server.ServerServiceKeeper;
 import com.hmdm.launcher.server.UnsafeOkHttpClient;
 import com.hmdm.launcher.service.LocationService;
@@ -304,6 +305,8 @@ public class MainActivity
 
     private final BroadcastReceiver screenOffReceiver = new ScreenOffReceiver();
 
+    private final BroadcastReceiver powerConnectionReceiver = new PowerConnectionReceiver();
+
     private final BroadcastReceiver stateChangeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -444,6 +447,16 @@ public class MainActivity
                 registerReceiver(screenOffReceiver, intentFilter, Context.RECEIVER_EXPORTED);
             } else {
                 registerReceiver(screenOffReceiver, intentFilter);
+            }
+
+            // Power cable connect/disconnect -> manage the screen (kiosk power management)
+            intentFilter = new IntentFilter();
+            intentFilter.addAction(Intent.ACTION_POWER_CONNECTED);
+            intentFilter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                registerReceiver(powerConnectionReceiver, intentFilter, Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(powerConnectionReceiver, intentFilter);
             }
 
             if (!getIntent().getBooleanExtra(Const.RESTORED_ACTIVITY, false)) {
@@ -1685,6 +1698,13 @@ public class MainActivity
         // To delay opening the settings activity
         boolean dialogWillShow = false;
 
+        // Keep the screen on while plugged in when kioskScreenOn is set.
+        // Together with PowerConnectionReceiver this gives: power on -> screen on,
+        // power off -> screen off.
+        if (config.getKioskScreenOn() != null) {
+            Utils.setStayOnWhilePluggedIn(this, config.getKioskScreenOn());
+        }
+
         if (config.getGps() != null) {
             LocationManager lm = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
             if (lm != null) {
@@ -2109,6 +2129,7 @@ public class MainActivity
             LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
             unregisterReceiver(stateChangeReceiver);
             unregisterReceiver(screenOffReceiver);
+            unregisterReceiver(powerConnectionReceiver);
         } catch (Exception e) {
             e.printStackTrace();
         }

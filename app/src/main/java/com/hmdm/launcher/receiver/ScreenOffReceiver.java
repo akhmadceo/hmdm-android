@@ -22,6 +22,8 @@ package com.hmdm.launcher.receiver;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.os.PowerManager;
 import android.util.Log;
 
@@ -36,8 +38,11 @@ public class ScreenOffReceiver extends BroadcastReceiver {
         Log.d(Const.LOG_TAG, "Screen off");
         SettingsHelper settingsHelper = SettingsHelper.getInstance(context);
         ServerConfig config = settingsHelper.getConfig();
+        // Only re-wake the screen while the device is actually plugged in.
+        // When unplugged the screen must stay off (see PowerConnectionReceiver),
+        // otherwise the two receivers fight each other.
         if (config != null && config.getKioskScreenOn() != null && config.getKioskScreenOn() &&
-                ProUtils.isKioskModeRunning(context)) {
+                ProUtils.isKioskModeRunning(context) && isPluggedIn(context)) {
             Log.d(Const.LOG_TAG, "Turning the screen back on");
             PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
@@ -49,6 +54,21 @@ public class ScreenOffReceiver extends BroadcastReceiver {
                 wl.acquire(1000); // Wake for ~1 second
                 wl.release();
             }
+        }
+    }
+
+    private boolean isPluggedIn(Context context) {
+        try {
+            Intent batteryStatus = context.registerReceiver(null,
+                    new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (batteryStatus == null) {
+                return false;
+            }
+            int plugged = batteryStatus.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
+            // Non-zero = AC / USB / wireless power connected
+            return plugged != 0;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

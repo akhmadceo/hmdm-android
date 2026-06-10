@@ -407,6 +407,27 @@ public class Utils {
         }
     }
 
+    /**
+     * Keep the screen on while the device is plugged in (any power source).
+     * When unplugged, the screen follows the normal timeout / power management.
+     * Requires device owner. Value 7 = AC | USB | WIRELESS.
+     */
+    public static boolean setStayOnWhilePluggedIn(Context context, boolean enabled) {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            ComponentName adminComponentName = LegacyUtils.getAdminComponentName(context);
+            if (dpm == null || adminComponentName == null
+                    || !dpm.isDeviceOwnerApp(context.getPackageName())) {
+                return false;
+            }
+            dpm.setGlobalSetting(adminComponentName,
+                    Settings.Global.STAY_ON_WHILE_PLUGGED_IN, enabled ? "7" : "0");
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static String getDataToken(Context context) {
         String token = context.getSharedPreferences(Const.PREFERENCES, Context.MODE_PRIVATE).getString(Const.PREFERENCES_DATA_TOKEN, null);
         if (token == null) {
