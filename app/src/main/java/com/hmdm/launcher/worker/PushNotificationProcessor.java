@@ -41,6 +41,8 @@ import com.hmdm.launcher.json.Application;
 import com.hmdm.launcher.json.Download;
 import com.hmdm.launcher.json.PushMessage;
 import com.hmdm.launcher.json.ServerConfig;
+import com.hmdm.launcher.pro.ProUtils;
+import com.hmdm.launcher.ui.MainActivity;
 import com.hmdm.launcher.util.InstallUtils;
 import com.hmdm.launcher.util.LegacyUtils;
 import com.hmdm.launcher.util.RemoteLogger;
@@ -69,6 +71,8 @@ public class PushNotificationProcessor {
     public static void process(PushMessage message, Context context) {
         RemoteLogger.log(context, Const.LOG_INFO, "Got Push Message, type " + message.getMessageType());
         if (message.getMessageType().equals(PushMessage.TYPE_CONFIG_UPDATED)) {
+            // Re-applying the configuration ends a temporary kiosk exit
+            ProUtils.resumeKiosk();
             // Update local configuration
             ConfigUpdater.notifyConfigUpdate(context);
             // The configUpdated should be broadcasted after the configuration update is completed
@@ -112,9 +116,12 @@ public class PushNotificationProcessor {
             executor.execute(() -> reboot(context));
             return;
         } else if (message.getMessageType().equals(PushMessage.TYPE_EXIT_KIOSK)) {
-            // Temporarily exit kiosk mode
-            LocalBroadcastManager.getInstance(context).
-                sendBroadcast(new Intent(Const.ACTION_EXIT_KIOSK));
+            // Temporarily exit kiosk mode.
+            // Do the work here instead of relying only on MainActivity's receiver:
+            // while the kiosk app is pinned the launcher activity sits in the background
+            // and may already be destroyed, in which case the broadcast reached nobody
+            // and the command silently did nothing.
+            exitKiosk(context);
             return;
         } else if (message.getMessageType().equals(PushMessage.TYPE_ADMIN_PANEL)) {
             LocalBroadcastManager.getInstance(context).
@@ -509,4 +516,22 @@ public class PushNotificationProcessor {
         }
     }
 
+
+    private static void exitKiosk(Context context) {
+        ProUtils.suspendKiosk();
+        ProUtils.releaseLockTask(context);
+        RemoteLogger.log(context, Const.LOG_INFO, "Exit kiosk by admin command");
+        // If the launcher activity is alive, let it redraw the desktop
+        LocalBroadcastManager.getInstance(context).
+                sendBroadcast(new Intent(Const.ACTION_EXIT_KIOSK));
+        // Bring the launcher desktop to front (the launcher is Device Owner and HOME,
+        // so it is allowed to start an activity from the background)
+        try {
+            Intent intent = new Intent(context, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            context.startActivity(intent);
+        } catch (Exception e) {
+            RemoteLogger.log(context, Const.LOG_WARN, "Failed to open the launcher after kiosk exit: " + e.getMessage());
+        }
+    }
 }

@@ -287,10 +287,11 @@ public class MainActivity
                     break;
 
                 case Const.ACTION_EXIT_KIOSK:
+                    // PushNotificationProcessor already suspended the kiosk and released
+                    // the lock task. Don't touch config.kioskMode: the config object is
+                    // shared and could get persisted, turning the kiosk off for good.
                     ServerConfig config = settingsHelper.getConfig();
                     if (config != null) {
-                        config.setKioskMode(false);
-                        RemoteLogger.log(MainActivity.this, Const.LOG_INFO, "Exit kiosk by admin command");
                         showContent(config);
                     }
                     break;
