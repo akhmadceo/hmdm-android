@@ -71,8 +71,55 @@ public class ProUtils {
         return settingsHelper != null ? settingsHelper.getConfig() : null;
     }
 
+    // Set by the "exitKiosk" admin command. Lives only in memory, so the kiosk comes
+    // back after a reboot / launcher restart, or when the admin re-applies the
+    // configuration (configUpdated push, see PushNotificationProcessor).
+    // It must survive regular config reloads (periodic sync, onResume), otherwise
+    // the launcher re-pins the main app right after the admin let the device out.
+    private static volatile boolean kioskSuspended = false;
+
+    public static void suspendKiosk() {
+        kioskSuspended = true;
+    }
+
+    public static void resumeKiosk() {
+        kioskSuspended = false;
+    }
+
+    public static boolean isKioskSuspended() {
+        return kioskSuspended;
+    }
+
+    /**
+     * Release the lock task without needing a foreground Activity (the launcher
+     * activity is in the background, or may even be destroyed, while the kiosk
+     * app is pinned). As Device Owner, clearing the lock task whitelist makes the
+     * system drop the pinned task.
+     */
+    public static void releaseLockTask(Context context) {
+        try {
+            if (!Utils.isDeviceOwner(context)) {
+                Log.w(Const.LOG_TAG, "releaseLockTask: launcher is not Device Owner");
+                return;
+            }
+            DevicePolicyManager dpm = dpm(context);
+            ComponentName admin = LegacyUtils.getAdminComponentName(context);
+            if (dpm != null && admin != null) {
+                dpm.setLockTaskPackages(admin, new String[]{});
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(Const.LOG_TAG, "releaseLockTask failed: " + e.getMessage(), e);
+        }
+    }
+
     /** Kiosk is required when it's enabled in the config and a main app is set. */
     public static boolean kioskModeRequired(Context context) {
+        if (kioskSuspended) {
+            return false;
+        }
         ServerConfig config = config(context);
         if (config == null || !config.isKioskMode()) {
             return false;
@@ -284,16 +331,7 @@ public class ProUtils {
                 }
             }
             // As Device Owner, clearing the whitelist releases any pinned app.
-            if (Utils.isDeviceOwner(activity)) {
-                DevicePolicyManager dpm = dpm(activity);
-                ComponentName admin = LegacyUtils.getAdminComponentName(activity);
-                if (dpm != null && admin != null) {
-                    dpm.setLockTaskPackages(admin, new String[]{});
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS);
-                    }
-                }
-            }
+            releaseLockTask(activity);
         } catch (Exception e) {
             Log.e(Const.LOG_TAG, "unlockKiosk failed: " + e.getMessage(), e);
         }
